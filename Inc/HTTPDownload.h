@@ -10,10 +10,6 @@
 
 #pragma once
 
-#ifndef XC_CORE_API
-	#define XC_CORE_API DLL_IMPORT
-#endif
-
 #include "XC_IpDrv.h"
 #include "XC_Download.h"
 #include "Devices.h"
@@ -63,8 +59,8 @@ public:
 	FDownloadURL CurrentURL; //Does not use RequestedPackage/Compression fields
 	HTTP_Request Request;
 	HTTP_Response Response;
-	FSocket Socket;
-	FIPv6Endpoint RemoteEndpoint;
+	CSocket Socket;
+	IPEndpoint RemoteEndpoint;
 	volatile int32 LogLock;
 	FOutputDeviceAsyncStorage SavedLogs;
 

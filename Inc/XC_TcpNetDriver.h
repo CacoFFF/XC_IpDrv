@@ -21,13 +21,13 @@ class UXC_TcpipConnection : public UNetConnection
 	NO_DEFAULT_CONSTRUCTOR(UXC_TcpipConnection)
 
 	// Variables.
-	FIPv6Endpoint	RemoteAddress;
-	FSocket			Socket;
+	IPEndpoint	RemoteAddress;
+	CSocket			Socket;
 	UBOOL			OpenedLocally;
 	FResolveInfo*	ResolveInfo;
 
 	// Constructors and destructors.
-	UXC_TcpipConnection( FSocket InSocket, UNetDriver* InDriver, FIPv6Endpoint InRemoteAddress, EConnectionState InState, UBOOL InOpenedLocally, const FURL& InURL );
+	UXC_TcpipConnection( CSocket InSocket, UNetDriver* InDriver, IPEndpoint InRemoteAddress, EConnectionState InState, UBOOL InOpenedLocally, const FURL& InURL );
 
 	void LowLevelSend( void* Data, INT Count );
 	FString LowLevelGetRemoteAddress();
@@ -52,8 +52,9 @@ class UXC_TcpNetDriver : public UNetDriver
 	int32 ConnectionLimit;
 
 	// Variables.
-	FIPv6Endpoint LocalAddress;
-	FSocket Socket;
+	IPEndpoint LocalAddress;
+	TArray<CSocket> Sockets;
+//	CSocket Socket;
 
 	// Constructor.
 	void StaticConstructor();

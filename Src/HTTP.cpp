@@ -7,6 +7,7 @@
 
 #if 1
 
+#include "XC_IpDrv.h"
 #include "HTTPDownload.h"
 #include "Cacus/Atomics.h"
 
@@ -137,14 +138,14 @@ void UXC_HTTPDownload::Tick()
 		FString NewHostname = CurrentURL.StringHost( 1 );
 		if ( Request.Hostname != NewHostname )
 		{
-			RemoteEndpoint.Address = FIPv6Address::Any;
+			RemoteEndpoint.Address = IPAddress::Any;
 			Request.Hostname = NewHostname;
 		}
 		RemoteEndpoint.Port = CurrentURL.Port ? CurrentURL.Port : 80;
 
 		//*****************************
 		//Hostname needs to be resolved
-		if ( RemoteEndpoint.Address == FIPv6Address::Any )
+		if ( RemoteEndpoint.Address == IPAddress::Any )
 		{
 			new FDownloadAsyncProcessor( [](FDownloadAsyncProcessor* Proc)
 			{
@@ -154,19 +155,19 @@ void UXC_HTTPDownload::Tick()
 
 				//STAGE 2, let main go (no longer safe to use Download from now on)
 				Proc->Detach();
-				FIPv6Address Address = ResolveHostname( *Hostname, NULL);
+				IPAddress Address = CSocket::ResolveHostname( appToAnsi(*Hostname));
 
 				//STAGE 3, validate downloader and lock
 				CSpinLock SL(&UXC_Download::GlobalLock);
 				if ( !Proc->DownloadActive() )
 					return;
-				if ( Address == FIPv6Address::Any )
+				if ( Address == IPAddress::Any )
 				{
 					Download->SavedLogs.Logf( NAME_DevNet, TEXT("Failed to resolve hostname %s"), *Hostname);
 					Download->DownloadError( *FString::Printf( *UXC_Download::InvalidUrlError, *Download->Request.Hostname) );
 				}
 				else
-					Download->SavedLogs.Logf( NAME_DevNet, TEXT("Resolved: %s >> %s"), *Hostname, *Address.String() );
+					Download->SavedLogs.Logf( NAME_DevNet, TEXT("Resolved: %s >> %s"), *Hostname, appFromAnsi(*Address) );
 				Download->RemoteEndpoint.Address = Address;
 			}, this);
 		}
@@ -183,9 +184,9 @@ void UXC_HTTPDownload::Tick()
 				UXC_HTTPDownload* Download = (UXC_HTTPDownload*)Proc->Download;
 				if ( !Download->AsyncLocalBind() )
 					return;
-				FSocket Socket               = Download->Socket;
+				CSocket Socket               = Download->Socket;
 				double Timeout               = Download->DownloadTimeout;
-				FIPv6Endpoint RemoteEndpoint = Download->RemoteEndpoint;
+				IPEndpoint RemoteEndpoint    = Download->RemoteEndpoint;
 				FString RequestHeader        = Download->Request.String();
 				const TCHAR* ConnectError    = nullptr;
 
@@ -194,7 +195,7 @@ void UXC_HTTPDownload::Tick()
 				Socket.SetNonBlocking();
 				appSleep( 0.2f); //Don't try to connect so quickly (a previous download's connection may not be closed)
 				ESocketState State = SOCKET_MAX;
-				if ( !Socket.Connect(RemoteEndpoint) && (Socket.LastError != FSocket::ENonBlocking) )
+				if ( !Socket.Connect(RemoteEndpoint) && (Socket.LastError != CSocket::ENonBlocking) )
 					ConnectError = TEXT("XC_HTTPDownload: connect() failed");
 				else
 				{
@@ -225,9 +226,8 @@ void UXC_HTTPDownload::Tick()
 						return;
 
 					int32 Sent = 0;
-					ANSICHAR* RequestHeaderAnsi = TCHAR_TO_ANSI_HEAP( *RequestHeader);
+					const ANSICHAR* RequestHeaderAnsi = appToAnsi( *RequestHeader);
 					bool bSent = Socket.Send( (const uint8*)RequestHeaderAnsi, RequestHeader.Len(), Sent) && (Sent >= RequestHeader.Len());
-					appFree( RequestHeaderAnsi);
 					if ( !bSent ) //Produce proper log!
 					{
 						Download->DownloadError( *UXC_Download::ConnectionFailedError );
@@ -363,9 +363,9 @@ bool UXC_HTTPDownload::AsyncReceive()
 		SavedLogs.Logf( NAME_DevNetTraffic, TEXT("Received %i bytes"), Bytes);
 	}
 
-	if ( (Socket.LastError != 0) && (Socket.LastError != FSocket::ENonBlocking) )
+	if ( (Socket.LastError != 0) && (Socket.LastError != CSocket::ENonBlocking) )
 	{
-		DownloadError( *FString::Printf( TEXT("Socket error: %s"), Socket.ErrorText( Socket.LastError)) );
+		DownloadError( *FString::Printf( TEXT("Socket error: %s"), appFromAnsi(CSocket::ErrorText(Socket.LastError))) );
 		return true;
 	}
 
@@ -494,7 +494,7 @@ bool UXC_HTTPDownload::AsyncReceive()
 bool UXC_HTTPDownload::AsyncLocalBind()
 {
 	Socket.Close();
-	Socket = FSocket(true);
+	Socket = CSocket(true);
 	if ( Socket.IsInvalid() )
 	{
 		DownloadError( *UXC_Download::ConnectionFailedError );
@@ -502,14 +502,16 @@ bool UXC_HTTPDownload::AsyncLocalBind()
 	}
 	Socket.SetReuseAddr();
 	Socket.SetLinger();
-	FIPv6Endpoint LocalAddress( GetLocalBindAddress(SavedLogs), 0);
-	if( !Socket.BindPort( LocalAddress, 20) )
+	TArray<IPAddress> LocalAddresses = GetLocalBindAddress(SavedLogs);
+	for ( int32 i=0; i<LocalAddresses.Num(); i++)
 	{
-		SavedLogs.Log( NAME_DevNet, TEXT("XC_HTTPDownload: bind() failed") );
-		DownloadError( *UXC_Download::ConnectionFailedError );
-		return false;
+		IPEndpoint LocalEndpoint( LocalAddresses(i), 0);
+		if ( Socket.BindPort(LocalEndpoint, 20) )
+			return true;
 	}
-	return true;
+	SavedLogs.Log( NAME_DevNet, TEXT("XC_HTTPDownload: bind() failed") );
+	DownloadError( *UXC_Download::ConnectionFailedError );
+	return false;
 }
 
 IMPLEMENT_CLASS(UXC_HTTPDownload)

@@ -7,13 +7,7 @@
     <ClCompile Include="Src\HTTP.cpp">
       <Filter>Src</Filter>
     </ClCompile>
-    <ClCompile Include="Src\IPv6.cpp">
-      <Filter>Src</Filter>
-    </ClCompile>
     <ClCompile Include="Src\NetDriver.cpp">
-      <Filter>Src</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Socket.cpp">
       <Filter>Src</Filter>
     </ClCompile>
     <ClCompile Include="Src\XC_IpDrv.cpp">
@@ -30,12 +24,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Inc\XC_DownloadURL.h">
-      <Filter>Inc</Filter>
-    </ClInclude>
-    <ClInclude Include="Inc\Socket.h">
-      <Filter>Inc</Filter>
-    </ClInclude>
-    <ClInclude Include="Inc\IPv6.h">
       <Filter>Inc</Filter>
     </ClInclude>
     <ClInclude Include="Inc\HTTPDownload.h">

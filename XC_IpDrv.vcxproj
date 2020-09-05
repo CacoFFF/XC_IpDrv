@@ -1,12 +1,8 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
-    <ProjectConfiguration Include="Debug|Win32">
-      <Configuration>Debug</Configuration>
-      <Platform>Win32</Platform>
-    </ProjectConfiguration>
-    <ProjectConfiguration Include="Release|Win32">
-      <Configuration>Release</Configuration>
+    <ProjectConfiguration Include="UnrealTournament|Win32">
+      <Configuration>UnrealTournament</Configuration>
       <Platform>Win32</Platform>
     </ProjectConfiguration>
   </ItemGroup>
@@ -14,16 +10,10 @@
     <SccProjectName>"$/Unreal/XC_IpDrv", CUDBAAAA</SccProjectName>
     <SccLocalPath>.</SccLocalPath>
     <ProjectGuid>{1107BD67-7FEC-41C4-BCC3-DC430E3540EC}</ProjectGuid>
-    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>7.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
-    <ConfigurationType>DynamicLibrary</ConfigurationType>
-    <PlatformToolset>v141_xp</PlatformToolset>
-    <UseOfMfc>false</UseOfMfc>
-    <CharacterSet>Unicode</CharacterSet>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='UnrealTournament|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <PlatformToolset>v141_xp</PlatformToolset>
     <UseOfMfc>false</UseOfMfc>
@@ -32,81 +22,19 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
   </ImportGroup>
-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-    <Import Project="$(VCTargetsPath)Microsoft.Cpp.UpgradeFromVC60.props" />
-  </ImportGroup>
-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='UnrealTournament|Win32'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
     <Import Project="$(VCTargetsPath)Microsoft.Cpp.UpgradeFromVC60.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <OutDir>.\XC_IpDrv___Win32_Debug\</OutDir>
-    <IntDir>.\XC_IpDrv___Win32_Debug\</IntDir>
-    <LinkIncremental>true</LinkIncremental>
-    <EmbedManifest>false</EmbedManifest>
-    <GenerateManifest>false</GenerateManifest>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='UnrealTournament|Win32'">
     <OutDir>..\System\</OutDir>
-    <IntDir>.\Release\</IntDir>
+    <IntDir>.\Lib\</IntDir>
     <LinkIncremental>true</LinkIncremental>
     <EmbedManifest>false</EmbedManifest>
     <GenerateManifest>false</GenerateManifest>
   </PropertyGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <ClCompile>
-      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
-      <InlineFunctionExpansion>Default</InlineFunctionExpansion>
-      <FunctionLevelLinking>false</FunctionLevelLinking>
-      <Optimization>Disabled</Optimization>
-      <SuppressStartupBanner>true</SuppressStartupBanner>
-      <WarningLevel>Level4</WarningLevel>
-      <TreatWarningAsError>true</TreatWarningAsError>
-      <AdditionalIncludeDirectories>..\Core\Inc;..\Engine\Inc;.\Inc;..\XC_Core\Inc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>_DEBUG;ThisPackage=XC_IpDrv;WIN32;_WINDOWS;UNICODE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AssemblerListingLocation>.\XC_IpDrv___Win32_Debug\</AssemblerListingLocation>
-      <PrecompiledHeaderOutputFile>.\XC_IpDrv___Win32_Debug\XC_IpDrv.pch</PrecompiledHeaderOutputFile>
-      <ObjectFileName>.\XC_IpDrv___Win32_Debug\</ObjectFileName>
-      <ProgramDataBaseFileName>.\XC_IpDrv___Win32_Debug\</ProgramDataBaseFileName>
-      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
-      <StructMemberAlignment>4Bytes</StructMemberAlignment>
-      <ExceptionHandling>Async</ExceptionHandling>
-      <TreatWChar_tAsBuiltInType>false</TreatWChar_tAsBuiltInType>
-      <BufferSecurityCheck>false</BufferSecurityCheck>
-    </ClCompile>
-    <Midl>
-      <SuppressStartupBanner>true</SuppressStartupBanner>
-      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <TypeLibraryName>.\XC_IpDrv___Win32_Debug\XC_IpDrv.tlb</TypeLibraryName>
-      <MkTypLibCompatible>true</MkTypLibCompatible>
-      <TargetEnvironment>Win32</TargetEnvironment>
-    </Midl>
-    <ResourceCompile>
-      <Culture>0x0409</Culture>
-      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-    </ResourceCompile>
-    <Bscmake>
-      <SuppressStartupBanner>true</SuppressStartupBanner>
-      <OutputFile>.\XC_IpDrv___Win32_Debug\XC_IpDrv.bsc</OutputFile>
-    </Bscmake>
-    <Link>
-      <SuppressStartupBanner>true</SuppressStartupBanner>
-      <LinkDLL>true</LinkDLL>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
-      <SubSystem>Console</SubSystem>
-      <OutputFile>..\System\XC_IpDrv.dll</OutputFile>
-      <ImportLibrary>.\XC_IpDrv___Win32_Debug\XC_IpDrv.lib</ImportLibrary>
-      <AdditionalDependencies>..\Core\Lib\Core.lib;..\Engine\Lib\Engine.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <ImageHasSafeExceptionHandlers>true</ImageHasSafeExceptionHandlers>
-      <ModuleDefinitionFile>Imports.def</ModuleDefinitionFile>
-    </Link>
-    <Manifest>
-      <VerboseOutput>false</VerboseOutput>
-    </Manifest>
-  </ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='UnrealTournament|Win32'">
     <ClCompile>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <InlineFunctionExpansion>Default</InlineFunctionExpansion>
@@ -127,7 +55,7 @@
       <ExceptionHandling>Async</ExceptionHandling>
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <AdditionalIncludeDirectories>..\Core\Inc;..\Engine\Inc;.\Inc;..\XC_Core\Inc;..\CacusLib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <DebugInformationFormat>None</DebugInformationFormat>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <ControlFlowGuard>false</ControlFlowGuard>
       <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
@@ -151,8 +79,8 @@
       <LinkDLL>true</LinkDLL>
       <SubSystem>Console</SubSystem>
       <OutputFile>..\System\XC_IpDrv.dll</OutputFile>
-      <ImportLibrary>.\Release\XC_IpDrv.lib</ImportLibrary>
-      <AdditionalDependencies>..\Core\Lib\Core.lib;..\Engine\Lib\Engine.lib;..\XC_Core\Release\XC_Core.lib;..\CacusLib\Release\Cacus.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <ImportLibrary>$(IntDir)$(TargetName).lib</ImportLibrary>
+      <AdditionalDependencies>..\Core\Lib\Core.lib;..\Engine\Lib\Engine.lib;..\XC_Core\Lib\XC_Core.lib;..\CacusLib\Lib\Cacus.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <ImageHasSafeExceptionHandlers>true</ImageHasSafeExceptionHandlers>
       <IgnoreSpecificDefaultLibraries>
       </IgnoreSpecificDefaultLibraries>
@@ -163,20 +91,24 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Src\HTTP.cpp" />
-    <ClCompile Include="Src\IPv6.cpp" />
     <ClCompile Include="Src\XC_IpDrv.cpp" />
     <ClCompile Include="Src\NetDriver.cpp" />
     <ClCompile Include="Src\DownloadURL.cpp" />
-    <ClCompile Include="Src\Socket.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Inc\HTTPDownload.h" />
     <ClInclude Include="Inc\XC_IpDrvClasses.h" />
-    <ClInclude Include="Inc\IPv6.h" />
-    <ClInclude Include="Inc\Socket.h" />
     <ClInclude Include="Inc\XC_IpDrv.h" />
     <ClInclude Include="Inc\XC_TcpNetDriver.h" />
     <ClInclude Include="Inc\XC_DownloadURL.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\CacusLib\CacusLib.vcxproj">
+      <Project>{1b0e5598-a201-4160-8937-c5c78bc5fc3b}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\XC_Core\XC_Core.vcxproj">
+      <Project>{9f83dc2b-7ba6-413c-b9fa-472421a516d4}</Project>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

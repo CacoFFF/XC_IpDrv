@@ -25,7 +25,7 @@
 // Windows socket class.
 //
 // Constructors and destructors.
-UXC_TcpipConnection::UXC_TcpipConnection( FSocket InSocket, UNetDriver* InDriver, FIPv6Endpoint InRemoteAddress, EConnectionState InState, UBOOL InOpenedLocally, const FURL& InURL )
+UXC_TcpipConnection::UXC_TcpipConnection( CSocket InSocket, UNetDriver* InDriver, IPEndpoint InRemoteAddress, EConnectionState InState, UBOOL InOpenedLocally, const FURL& InURL )
 :	UNetConnection	( InDriver, InURL )
 ,	Socket			( InSocket )
 ,	RemoteAddress	( InRemoteAddress )
@@ -40,8 +40,8 @@ UXC_TcpipConnection::UXC_TcpipConnection( FSocket InSocket, UNetDriver* InDriver
 	// In connecting, figure out IP address.
 	if( InOpenedLocally )
 	{
-		RemoteAddress.Address = ResolveHostname( *InURL.Host, NULL, 1);
-		if ( RemoteAddress.Address == FIPv6Address::Any )
+		RemoteAddress.Address = CSocket::ResolveHostname( appToAnsi(*InURL.Host), true);
+		if ( RemoteAddress.Address == IPAddress::Any )
 			ResolveInfo = new FResolveInfo( *InURL.Host);
 		RemoteAddress.Port = InURL.Port ? InURL.Port : 7777;
 	}
@@ -66,7 +66,7 @@ void UXC_TcpipConnection::LowLevelSend( void* Data, int32 Count )
 		{
 			// Host name resolution just now succeeded.
 			RemoteAddress.Address = ResolveInfo->Addr;
-			debugf( TEXT("Resolved %s (%s)"), ResolveInfo->GetHostName(), *RemoteAddress.Address.String() );
+			debugf( TEXT("Resolved %s (%s)"), appFromAnsi(ResolveInfo->HostName), appFromAnsi(*RemoteAddress.Address) );
 			delete ResolveInfo;
 			ResolveInfo = NULL;
 		}
@@ -80,14 +80,14 @@ void UXC_TcpipConnection::LowLevelSend( void* Data, int32 Count )
 
 FString UXC_TcpipConnection::LowLevelGetRemoteAddress()
 {
-	return RemoteAddress.String();
+	return appFromAnsi(*RemoteAddress);
 }
 
 FString UXC_TcpipConnection::LowLevelDescribe()
 {
 	return FString::Printf
 	(
-		TEXT("%s %s state: %s"), *URL.Host, *RemoteAddress.String(),
+		TEXT("%s %s state: %s"), *URL.Host, appFromAnsi(*RemoteAddress),
 			State==USOCK_Pending	?	TEXT("Pending")
 		:	State==USOCK_Open		?	TEXT("Open")
 		:	State==USOCK_Closed		?	TEXT("Closed")
@@ -112,8 +112,8 @@ UBOOL UXC_TcpNetDriver::InitConnect( FNetworkNotify* InNotify, FURL& ConnectURL,
 		return 0;
 
 	// Create new connection.
-	FIPv6Endpoint Endpoint = FIPv6Endpoint( FIPv6Address::Any, ConnectURL.Port);
-	ServerConnection = new UXC_TcpipConnection( Socket, this, Endpoint, USOCK_Pending, 1, ConnectURL );
+	IPEndpoint Endpoint = IPEndpoint( IPAddress::Any, ConnectURL.Port);
+	ServerConnection = new UXC_TcpipConnection( Sockets(0), this, Endpoint, USOCK_Pending, 1, ConnectURL );
 	debugf( NAME_DevNet, TEXT("Game client on port %i, rate %i"), LocalAddress.Port, ServerConnection->CurrentNetSpeed );
 
 	// Create control channel (channel zero).
@@ -130,7 +130,7 @@ UBOOL UXC_TcpNetDriver::InitListen( FNetworkNotify* InNotify, FURL& LocalURL, FS
 		return 0;
 
 	// Update result URL.
-	LocalURL.Host = LocalAddress.Address.String();
+	LocalURL.Host = appFromAnsi(*LocalAddress.Address);
 	LocalURL.Port = LocalAddress.Port;
 	debugf( NAME_DevNet, TEXT("TcpNetDriver on port %i%s"), LocalURL.Port, GIPv6 ? TEXT(", uses IPv6") : TEXT("") );
 
@@ -146,16 +146,19 @@ void UXC_TcpNetDriver::TickDispatch( float DeltaTime )
 	uint8 Data[NETWORK_MAX_PACKET];
 
 #ifdef __LINUX_X86__
-	INT LoopMax = (1+ClientConnections.Num()) * 500; //See what's up in linux
+	INT LoopMax = (1+ClientConnections.Num()) * 1000; //See what's up in linux
 #endif
 
+	for( int32 s=0; s<Sockets.Num(); s++)
+	{
+		CSocket& Socket = Sockets(s);
 	for( ; ; )
 	{
 		// Get data, if any.
 		clockFast(RecvCycles);
 		int32 Size;
-		FIPv6Endpoint Endpoint;
-		Socket.RecvFrom( Data, sizeof(Data), Size, Endpoint);
+		IPEndpoint Endpoint;
+		bool bHasData = Socket.RecvFrom( Data, sizeof(Data), Size, Endpoint);
 		unclockFast(RecvCycles);
 		
 
@@ -164,16 +167,15 @@ void UXC_TcpNetDriver::TickDispatch( float DeltaTime )
 			break;
 #endif
 		// Handle result.
-		if( Size == FSocket::Error )
+		if( !bHasData )
 		{
-			int32 Error = FSocket::ErrorCode();
-			if ( Error == FSocket::ENonBlocking )
+			if ( Socket.LastError == CSocket::ENonBlocking )
 				break; // No data
-			else if ( Error != FSocket::EPortUnreach )
+			else if ( Socket.LastError != CSocket::EPortUnreach )
 			{
 				static UBOOL FirstError=1;
 				if ( FirstError )
-					debugf( TEXT("UDP recvfrom error: %i from %s"), FSocket::ErrorText(Error), *Endpoint.String() );
+					debugf( TEXT("UDP recvfrom error: %i from %s"), appFromAnsi(CSocket::ErrorText(Socket.LastError)), appFromAnsi(*Endpoint) );
 				FirstError = 0;
 				break;
 			}
@@ -186,7 +188,7 @@ void UXC_TcpNetDriver::TickDispatch( float DeltaTime )
 			if( ((UXC_TcpipConnection*)ClientConnections(i))->RemoteAddress == Endpoint )
 				Connection = (UXC_TcpipConnection*)ClientConnections(i);
 
-		if( Size == FSocket::Error )
+		if ( !bHasData )
 		{
 			if( Connection )
 			{
@@ -205,7 +207,7 @@ void UXC_TcpNetDriver::TickDispatch( float DeltaTime )
 					if ((Connection->State != USOCK_Open) || (!AllowPlayerPortUnreach))
 					{
 						if ( LogPortUnreach )
-							debugf( TEXT("Received ICMP port unreachable from client %s.  Disconnecting."), *Endpoint.String() );
+							debugf( TEXT("Received ICMP port unreachable from client %s.  Disconnecting."), appFromAnsi(*Endpoint) );
 						delete Connection;
 					}
 				}
@@ -213,7 +215,7 @@ void UXC_TcpNetDriver::TickDispatch( float DeltaTime )
 			else
 			{
 				if ( LogPortUnreach )
-					debugf( TEXT("Received ICMP port unreachable from %s.  No matching connection found."), *Endpoint.String() );
+					debugf( TEXT("Received ICMP port unreachable from %s.  No matching connection found."), appFromAnsi(*Endpoint) );
 			}
 		}
 		else
@@ -236,7 +238,7 @@ void UXC_TcpNetDriver::TickDispatch( float DeltaTime )
 					if ( UXC_TcpipConnection::StaticClass()->ClassUnique > (ClientConnections.Num() + ConnectionLimit) )
 						UXC_TcpipConnection::StaticClass()->ClassUnique = 0;
 					Connection = new UXC_TcpipConnection( Socket, this, Endpoint, USOCK_Open, 0, FURL() );
-					Connection->URL.Host = Endpoint.Address.String();
+					Connection->URL.Host = appFromAnsi(*Endpoint.Address);
 					Notify->NotifyAcceptedConnection( Connection );
 					ClientConnections.AddItem( Connection );
 				}
@@ -247,22 +249,27 @@ void UXC_TcpNetDriver::TickDispatch( float DeltaTime )
 				Connection->ReceivedRawPacket( Data, Size );
 		}
 	}
+	}
 }
 
 FString UXC_TcpNetDriver::LowLevelGetNetworkNumber()
 {
-	return LocalAddress.Address.String();
+	return appFromAnsi(*LocalAddress.Address);
 }
 
 void UXC_TcpNetDriver::LowLevelDestroy()
 {
 	// Close the socket.
-	if ( !Socket.IsInvalid() )
+	for ( int32 s=0; s<Sockets.Num(); s++)
 	{
-		if( !Socket.Close() )
-			debugf( NAME_Exit, TEXT("WinSock closesocket error (%i)"), FSocket::ErrorCode() );
-		debugf( NAME_Exit, TEXT("WinSock shut down") );
+		CSocket& Socket = Sockets(s);
+		if ( !Socket.IsInvalid() )
+		{
+			if( !Socket.Close() )
+				debugf( NAME_Exit, TEXT("closesocket error (%i)"), appFromAnsi(CSocket::ErrorText(Socket.LastError)) );
+		}
 	}
+	Sockets.Empty();
 }
 
 // UXC_TcpNetDriver interface.
@@ -285,34 +292,23 @@ UBOOL UXC_TcpNetDriver::InitBase( UBOOL Connect, FNetworkNotify* InNotify, FURL&
 			SaveConfig();
 		}
 	}
-	// Init WSA.
-	if( !Socket.Init( Error ) )
+
+	GIPv6 = (UseIPv6 != 0);
+
+	// Initalize platform Socket (WinSock2 requires this)
+	if( !CSocket::Init() )
 		return 0;
 
-	// Create UDP socket and enable broadcasting.
-	Socket = FSocket( false);
-	if( Socket.IsInvalid() )
+	// Obtain local addresses
+	TArray<IPAddress> MultiAddress = GetLocalBindAddress(*GLog);
+	if ( !MultiAddress.Num() )
 	{
-		Socket = 0;
-		Error = FString::Printf( TEXT("WinSock: socket failed (%i)"), FSocket::ErrorText() );
+		Error = TEXT("No local IP address available");
 		return 0;
 	}
-	if ( !Socket.EnableBroadcast() )
-	{
-		Error = FString::Printf( TEXT("%s: setsockopt SO_BROADCAST failed (%i)"), FSocket::API, FSocket::ErrorText() );
-		return 0;
-	}
+	LocalAddress.Address = MultiAddress(0);
 
-	Socket.SetReuseAddr();
-	Socket.SetRecvErr();
-
-    // Increase socket queue size, because we are polling rather than threading
-	// and thus we rely on Windows Sockets to buffer a lot of data on the server.
-	INT QueueSize = Connect ? 0x8000 : 0x25000; //was 0x20000
-	Socket.SetQueueSize( QueueSize, QueueSize);
-
-	// Bind socket to our port.
-	LocalAddress.Address = GetLocalBindAddress(*GLog);
+	// Get hardcoded port
 	UBOOL HardcodedPort = 0;
 	if( !Connect )
 	{
@@ -320,21 +316,74 @@ UBOOL UXC_TcpNetDriver::InitBase( UBOOL Connect, FNetworkNotify* InNotify, FURL&
 		HardcodedPort = Parse( appCmdLine(), TEXT("PORT="), URL.Port );
 		LocalAddress.Port = URL.Port;
 	}
-	int32 AttemptPort = LocalAddress.Port;
-	int32 BoundPort = Socket.BindPort( LocalAddress, HardcodedPort ? 1 : 20);
-	if ( BoundPort == 0 )
+
+	// Initialize each socket.
+	Sockets.Empty();
+	for ( int i=0; i<MultiAddress.Num(); i++)
 	{
-		Error = FString::Printf( TEXT("%s: binding to port %i failed (%s)"), FSocket::API, AttemptPort, FSocket::ErrorText() );
-		return 0;
+		// Log previous error and flush it
+		if ( Error.Len() )
+		{
+			GWarn->Log( Error );
+			Error.Empty();
+		}
+
+		// Create UDP socket and enable broadcasting.
+		Sockets.AddItem( CSocket(false) );
+		CSocket& Socket = Sockets.Last();
+
+		// Fatal errors
+		if( Socket.IsInvalid() )
+		{
+			Sockets.Empty();
+			Error = FString::Printf( TEXT("%s: socket failed (%i)"), appFromAnsi(CSocket::API), appFromAnsi(CSocket::ErrorText()) );
+			return 0;
+		}
+		if ( !Socket.EnableBroadcast() )
+		{
+			Socket.Close();
+			Sockets.Empty();
+			Error = FString::Printf( TEXT("%s: setsockopt SO_BROADCAST failed (%i)"), appFromAnsi(CSocket::API), appFromAnsi(CSocket::ErrorText()) );
+			return 0;
+		}
+
+		Socket.SetReuseAddr();
+		Socket.SetRecvErr();
+
+		// Increase socket queue size, because we are polling rather than threading
+		// and thus we rely on Windows Sockets to buffer a lot of data on the server.
+		INT QueueSize = Connect ? 0x8000 : 0x25000; //was 0x20000
+		Socket.SetQueueSize( QueueSize, QueueSize);
+
+		// Bind socket to our port.
+		int32 AttemptPort = HardcodedPort ? HardcodedPort : LocalAddress.Port;
+		IPEndpoint CurrentEndpoint( MultiAddress(i), AttemptPort);
+		int32 BoundPort = Socket.BindPort( CurrentEndpoint, HardcodedPort ? 1 : 20);
+		if ( BoundPort == 0 )
+		{
+			Error = FString::Printf( TEXT("%s: binding to port %i failed (%s)"), appFromAnsi(CSocket::API), AttemptPort, appFromAnsi(CSocket::ErrorText()) );
+			Socket.Close();
+			Sockets.Remove( Sockets.Num() - 1);
+			continue;
+		}
+		if( !Socket.SetNonBlocking() )
+		{
+			Error = FString::Printf( TEXT("%s: SetNonBlocking failed (%s)"), appFromAnsi(CSocket::API), appFromAnsi(CSocket::ErrorText()) );
+			Socket.Close();
+			Sockets.Remove( Sockets.Num() - 1);
+			continue;
+		}
 	}
-	if( !Socket.SetNonBlocking() )
+
+	// Log previous error and flush it if we have a valid socket
+	if ( Error.Len() && (Sockets.Num() > 0) )
 	{
-		Error = FString::Printf( TEXT("%s: SetNonBlocking failed (%s)"), FSocket::API, FSocket::ErrorText() );
-		return 0;
+		GWarn->Log( Error );
+		Error.Empty();
 	}
 
 	// Success.
-	return 1;
+	return Sockets.Num() > 0;
 }
 
 UXC_TcpipConnection* UXC_TcpNetDriver::GetServerConnection() 

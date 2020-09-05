@@ -7,6 +7,7 @@
 
 #pragma once
 
+#define CACUS_API DLL_IMPORT
 #define XC_CORE_API DLL_IMPORT
 #define XC_IPDRV_API DLL_EXPORT
 
@@ -19,11 +20,40 @@
 
 #include "Cacus/CacusThread.h"
 #include "Cacus/CacusPlatform.h"
+#include "Cacus/IPv6.h"
+#include "Cacus/NetworkSocket.h"
+
+#include "XC_Template.h"
+
+/*----------------------------------------------------------------------------
+	Non-blocking resolver.
+----------------------------------------------------------------------------*/
 
 unsigned long ResolveThreadEntry( void* Arg, struct CThread* Handler);
 
-#include "IPv6.h"
-#include "Socket.h"
+class FResolveInfo : public CThread
+{
+public:
+	// Variables.
+	IPAddress Addr;
+	TCHAR Error[256];
+	ANSICHAR HostName[256];
+
+	// Functions.
+	FResolveInfo( const TCHAR* InHostName );
+
+	int32 Resolved();
+	const TCHAR* GetError() const; //Returns nullptr in absence of error
+};
+
+
+/*----------------------------------------------------------------------------
+	Functions.
+----------------------------------------------------------------------------*/
+
+TArray<IPAddress> GetLocalBindAddress( FOutputDevice& Out);
+TArray<IPAddress> GetLocalHostAddress( FOutputDevice& Out, UBOOL& bCanBindAll);
+
 #include "XC_DownloadURL.h"
 #include "XC_IpDrvClasses.h"
 #include "XC_TcpNetDriver.h"
