@@ -14,6 +14,7 @@
 *.user
 *.exp
 *.log
+*.sbr
 .vc/
 ipch/
 

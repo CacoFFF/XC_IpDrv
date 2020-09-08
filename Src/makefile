@@ -10,9 +10,7 @@ LIBS = ../../System/Core.so ../../System/Engine.so ../../System/Cacus.so ../../S
 
 SRCS = DownloadURL.cpp	\
 	HTTP.cpp	\
-	IPv6.cpp	\
 	NetDriver.cpp	\
-	Socket.cpp	\
 	XC_IpDrv.cpp
 
 OBJS = $(SRCS:%.cpp=$(OBJDIR)%.o)
@@ -35,7 +33,7 @@ $(OBJS) : $(OBJDIR)%.o : %.cpp
 #Generate dependancies
 #%.d : %.cpp
 $(DEPS) : $(OBJDIR)%.d : %.cpp
-	mkdir -p Obj
+	@mkdir -p $(OBJDIR)
 	@echo $(@:%.d=%.o) $@ : \\ > $@
 	@/bin/sh -ec '$(CXX) -MM $(PREPROCESSORS) $(CXXFLAGS) $(INCLUDES) $< | \
 		sed -e '\''s/.*://'\'' >> $@'

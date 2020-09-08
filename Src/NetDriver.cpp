@@ -169,7 +169,7 @@ void UXC_TcpNetDriver::TickDispatch( float DeltaTime )
 		// Handle result.
 		if( !bHasData )
 		{
-			if ( Socket.LastError == CSocket::ENonBlocking )
+			if ( Socket.IsNonBlocking(Socket.LastError) )
 				break; // No data
 			else if ( Socket.LastError != CSocket::EPortUnreach )
 			{

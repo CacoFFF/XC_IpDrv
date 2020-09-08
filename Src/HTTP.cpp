@@ -9,7 +9,9 @@
 
 #include "XC_IpDrv.h"
 #include "HTTPDownload.h"
+#include "Cacus/CacusBase.h"
 #include "Cacus/Atomics.h"
+#include "Cacus/TCharBuffer.h"
 
 
 /*----------------------------------------------------------------------------
@@ -185,18 +187,22 @@ void UXC_HTTPDownload::Tick()
 				if ( !Download->AsyncLocalBind() )
 					return;
 				CSocket Socket               = Download->Socket;
-				double Timeout               = Download->DownloadTimeout;
+				double Timeout               = Max<double>( Download->DownloadTimeout, 2.0);
 				IPEndpoint RemoteEndpoint    = Download->RemoteEndpoint;
 				FString RequestHeader        = Download->Request.String();
-				const TCHAR* ConnectError    = nullptr;
+				TCharWideBuffer<256> ConnectError;
 
 				//STAGE 2, let main go (no longer safe to use Download from now on)
 				Proc->Detach();
 				Socket.SetNonBlocking();
 				appSleep( 0.2f); //Don't try to connect so quickly (a previous download's connection may not be closed)
 				ESocketState State = SOCKET_MAX;
-				if ( !Socket.Connect(RemoteEndpoint) && (Socket.LastError != CSocket::ENonBlocking) )
-					ConnectError = TEXT("XC_HTTPDownload: connect() failed");
+				if ( !Socket.Connect(RemoteEndpoint) && !Socket.IsNonBlocking(Socket.LastError) )
+				{
+					TCharWideBuffer<64> ErrorCode = Socket.ErrorText(Socket.LastError);
+					ConnectError = TEXT("XC_HTTPDownload: connect() failed ");
+					ConnectError += *ErrorCode;
+				}	
 				else
 				{
 					State = Socket.CheckState( SOCKET_Writable, Timeout);
@@ -206,13 +212,14 @@ void UXC_HTTPDownload::Tick()
 						ConnectError = TEXT("XC_HTTPDownload: connection timed out");
 				}
 
-				if ( ConnectError )
+				if ( ConnectError[0] != '\0')
 				{
 					//STAGE 3: Tell downloader (if still exists) of failure to connect to server
 					CSleepLock SL(&UXC_Download::GlobalLock); 
 					if ( Proc->DownloadActive() )
 					{
-						Download->SavedLogs.Log( NAME_DevNet, ConnectError);
+						Download->SavedLogs.Log( NAME_DevNet, *ConnectError);
+						appSleep( 0.1f);
 						Download->DownloadError( *UXC_Download::ConnectionFailedError );
 						Download->IsInvalid = (State == SOCKET_Timeout); //If the server timed out, do not try to connect again for another download
 					}
@@ -230,6 +237,11 @@ void UXC_HTTPDownload::Tick()
 					bool bSent = Socket.Send( (const uint8*)RequestHeaderAnsi, RequestHeader.Len(), Sent) && (Sent >= RequestHeader.Len());
 					if ( !bSent ) //Produce proper log!
 					{
+						ConnectError = TEXT("XC_HTTPDownload: send() failed with ");
+						TCharWideBuffer<64> ErrorCode = Socket.ErrorText(Socket.LastError);
+						ConnectError += *ErrorCode;
+						Download->SavedLogs.Log( NAME_DevNet, *ConnectError);
+						appSleep( 0.1f);
 						Download->DownloadError( *UXC_Download::ConnectionFailedError );
 						return;
 					}
@@ -363,7 +375,7 @@ bool UXC_HTTPDownload::AsyncReceive()
 		SavedLogs.Logf( NAME_DevNetTraffic, TEXT("Received %i bytes"), Bytes);
 	}
 
-	if ( (Socket.LastError != 0) && (Socket.LastError != CSocket::ENonBlocking) )
+	if ( (Socket.LastError != 0) && !Socket.IsNonBlocking(Socket.LastError) )
 	{
 		DownloadError( *FString::Printf( TEXT("Socket error: %s"), appFromAnsi(CSocket::ErrorText(Socket.LastError))) );
 		return true;
