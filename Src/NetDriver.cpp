@@ -356,7 +356,7 @@ UBOOL UXC_TcpNetDriver::InitBase( UBOOL Connect, FNetworkNotify* InNotify, FURL&
 		Socket.SetQueueSize( QueueSize, QueueSize);
 
 		// Bind socket to our port.
-		int32 AttemptPort = HardcodedPort ? HardcodedPort : LocalAddress.Port;
+		int32 AttemptPort = HardcodedPort ? URL.Port : LocalAddress.Port;
 		IPEndpoint CurrentEndpoint( MultiAddress(i), AttemptPort);
 		int32 BoundPort = Socket.BindPort( CurrentEndpoint, HardcodedPort ? 1 : 20);
 		if ( BoundPort == 0 )

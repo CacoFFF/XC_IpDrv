@@ -5,6 +5,7 @@
 
 #include "XC_IpDrv.h"
 #include "Cacus/DebugCallback.h"
+#include "Cacus/CacusString.h"
 
 /*-----------------------------------------------------------------------------
 	Declarations.
@@ -43,53 +44,89 @@ IMPLEMENT_PACKAGE(XC_IpDrv);
 TArray<IPAddress> GetLocalBindAddress( FOutputDevice& Out)
 {
 	UBOOL bCanBindAll;
-
-	TArray<IPAddress> HostAddr = GetLocalHostAddress( Out, bCanBindAll);
-	if ( bCanBindAll )
+	TArray<IPAddress> Addresses = GetLocalHostAddress( Out, bCanBindAll);
+	if ( bCanBindAll && GIPv6 )
 	{
-		HostAddr.Empty();
-		HostAddr.AddItem(IPAddress::Any);
-		if ( GIPv6 ) // Also add IPv4 ANY
-			HostAddr.AddItem(IPAddress(0,0,0,0));
+		// Also add IPv4 ANY
+		INT Index;
+		if ( Addresses.FindItem( IPAddress::Any, Index) )
+			Addresses.InsertItem( Index+1, IPAddress(0,0,0,0));
 	}
-	return HostAddr;
+	return Addresses;
 }
 
 //Should export as C
+static uint32 First = 0;
 TArray<IPAddress> GetLocalHostAddress( FOutputDevice& Out, UBOOL& bCanBindAll)
 {
 	guard(GetLocalHostAddress);
 
 	TArray<IPAddress> Addresses;
-	IPAddress HostAddr = IPAddress::Any;
-	TCHAR Home[256] = TEXT("");
-	bCanBindAll = false;
 
-	// TODO: Bind to multiple addresses
-	if ( Parse( appCmdLine(), TEXT("MULTIHOME="), Home, ARRAY_COUNT(Home)) )
+	const TCHAR* MultiHome = appStrfind( appCmdLine(), TEXT("MULTIHOME="));
+	if ( MultiHome )
 	{
-		HostAddr = CSocket::ResolveHostname( appToAnsi(Home));
-		if ( HostAddr==IPAddress::Any )
-			Out.Logf( TEXT("Invalid multihome IP address %s"), Home);
-		//else
-		//	Out.Logf( NAME_Init, TEXT("%s: Multihome %s resolved to (%s)"), FSocket::API, Home, *HostAddr.String() );
-	}
-	else
-	{
-		FString Hostname( CSocket::GetHostname() );
-		bCanBindAll = !ParseParam(appCmdLine(),TEXT("PRIMARYNET"));
-		if ( !bCanBindAll )
-			HostAddr = CSocket::ResolveHostname(""); //get local host name
+		FMemMark Mark(GMem);
 
-		static uint32 First = 0;
-		if( !First )
+		const TCHAR* MultiHomeEnd = (MultiHome += _len("MULTIHOME="));
+		AdvanceTo( MultiHomeEnd, TEXT("\" \r\n"));
+		size_t MultiHomeSize = 1 + MultiHomeEnd - MultiHome;
+		TCHAR* Start = new(GMem,MultiHomeSize) TCHAR;
+		CStrcpy_s( Start, MultiHomeSize, MultiHome);
+
+		while ( true )
 		{
-			First = 1;
-			Out.Logf( NAME_Init, TEXT("%s: I am %s (%s)"), appFromAnsi(CSocket::API), *Hostname, appFromAnsi(*HostAddr) );
+			const TCHAR* End = Start;
+			AdvanceTo( End, TEXT(",;"));
+			bool bLast = (*End != ',') && (*End != ';');
+			*(TCHAR*)End = '\0';
+
+			// Get address
+			if ( !appStricmp(Start,TEXT("PRIMARYNET")) )
+				Addresses.AddUniqueItem(CSocket::ResolveHostname(""));
+			else if ( !appStricmp(Start,TEXT("ALL")) || !appStricmp(Start,TEXT("ANY")) )
+				Addresses.AddUniqueItem(IPAddress::Any);
+			else
+			{
+				IPAddress Resolved = CSocket::ResolveHostname(appToAnsi(Start));
+				if ( Resolved != IPAddress::Any )
+					Addresses.AddUniqueItem(Resolved);
+			}
+
+			if ( bLast )
+				break;
+			Start = (TCHAR*)End + 1;
 		}
+		Mark.Pop();
+
+		if ( Addresses.Num() )
+		{
+			if ( !First )
+			{
+				First = 1;
+				FString API(CSocket::API); //ANSICHAR constructor
+				for ( int32 i=0; i<Addresses.Num(); i++)
+					Out.Logf( NAME_Init, TEXT("%s: MultiHome address %i is %s"), *API, i+1, *FString(*Addresses(i)) );
+			}
+			bCanBindAll = Addresses.FindItemIndex(IPAddress::Any) != INDEX_NONE;
+			return Addresses;
+		}
+	}
+
+	IPAddress HostAddr = IPAddress::Any;
+	FString Hostname( CSocket::GetHostname() );
+	bCanBindAll = !ParseParam(appCmdLine(),TEXT("PRIMARYNET"));
+	if ( !bCanBindAll )
+		HostAddr = CSocket::ResolveHostname(""); //get local host name
+
+	if ( !First )
+	{
+		First = 1;
+		Out.Logf( NAME_Init, TEXT("%s: I am %s (%s)"), appFromAnsi(CSocket::API), *Hostname, appFromAnsi(*HostAddr) );
 	}
 	Addresses.AddItem(HostAddr);
 	return Addresses;
+
 	unguard;
 }
 
