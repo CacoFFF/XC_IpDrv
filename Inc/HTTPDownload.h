@@ -63,6 +63,7 @@ public:
 	IPEndpoint RemoteEndpoint;
 	volatile int32 LogLock;
 	FOutputDeviceAsyncStorage SavedLogs;
+	CScopedLibrary* CURL_Library;
 
 public:
 	void StaticConstructor();

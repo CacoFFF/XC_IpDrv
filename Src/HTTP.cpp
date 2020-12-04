@@ -10,9 +10,84 @@
 #include "XC_IpDrv.h"
 #include "HTTPDownload.h"
 #include "Cacus/CacusBase.h"
+#include "Cacus/DynamicLinking.h"
 #include "Cacus/Atomics.h"
 #include "Cacus/TCharBuffer.h"
 
+/*----------------------------------------------------------------------------
+	LibCurl utils.
+----------------------------------------------------------------------------*/
+
+typedef int32 (*curl_global_init_PROC)(int32);
+typedef void* (*curl_easy_init_PROC)(void);
+typedef void (*curl_easy_cleanup_PROC)(void*);
+typedef int32 (*curl_easy_setopt_PROC)(void*, int32, ...);
+typedef int32 (*curl_easy_perform_PROC)(void*);
+typedef const char* (*curl_easy_strerror_PROC)(int32);
+typedef int32 (*curl_easy_getinfo_PROC)(void*,int32,...);
+
+static UXC_HTTPDownload* CallbackDownload = nullptr;
+static void* CURLEasy = nullptr;
+static int32 ContentLengthQuery = 0;
+static curl_global_init_PROC curl_global_init;
+static curl_easy_init_PROC curl_easy_init;
+static curl_easy_cleanup_PROC curl_easy_cleanup;
+static curl_easy_setopt_PROC curl_easy_setopt;
+static curl_easy_perform_PROC curl_easy_perform;
+static curl_easy_strerror_PROC curl_easy_strerror;
+static curl_easy_getinfo_PROC curl_easy_getinfo;
+
+static UBOOL LibCurl_GetProcs( CScopedLibrary* LibHandle)
+{
+	curl_global_init   = LibHandle->Get<curl_global_init_PROC>("curl_global_init");
+	curl_easy_init     = LibHandle->Get<curl_easy_init_PROC>("curl_easy_init");
+	curl_easy_cleanup  = LibHandle->Get<curl_easy_cleanup_PROC>("curl_easy_cleanup");
+	curl_easy_setopt   = LibHandle->Get<curl_easy_setopt_PROC>("curl_easy_setopt");
+	curl_easy_perform  = LibHandle->Get<curl_easy_perform_PROC>("curl_easy_perform");
+	curl_easy_strerror = LibHandle->Get<curl_easy_strerror_PROC>("curl_easy_strerror");
+	curl_easy_getinfo  = LibHandle->Get<curl_easy_getinfo_PROC>("curl_easy_getinfo");
+	return curl_global_init 
+		&& curl_easy_init 
+		&& curl_easy_cleanup 
+		&& curl_easy_setopt 
+		&& curl_easy_perform 
+		&& curl_easy_strerror
+		&& curl_easy_getinfo;
+}
+
+static size_t TestCallback( void* Data, size_t Size, size_t Elems, void* Arg)
+{
+	int32 Received = (int32)(Size * Elems);
+	if ( CallbackDownload )
+	{
+		if ( ContentLengthQuery )
+		{
+			/*CURLINFO_CONTENT_LENGTH_DOWNLOAD_T*/
+			int_p ContentLength;
+			if ( !curl_easy_getinfo( CURLEasy, 0x600000 + 15, &ContentLength) )
+			{
+				CallbackDownload->RealFileSize = (int32)ContentLength;
+				ContentLengthQuery = 0;
+			}
+		}
+		int32 RealSize = CallbackDownload->RealFileSize ? CallbackDownload->RealFileSize : CallbackDownload->Info->FileSize;
+		int32 Count = (CallbackDownload->Transfered + Received > RealSize) ? RealSize - CallbackDownload->Transfered : Received;
+		if ( Count > 0 )
+			CallbackDownload->ReceiveData( (uint8*)Data, Count);
+	}
+	return (size_t)Received;
+}
+
+static size_t HeaderCallback( void* Data, size_t Size, size_t Elems, void* Arg)
+{
+	size_t Received = Size * Elems;
+	/*if ( CallbackDownload )
+	{
+		TCharWideBuffer<2048> Buffer = (char*)Data;
+		CallbackDownload->SavedLogs.Logf( NAME_DevNet, *Buffer);
+	}*/
+	return Received;
+}
 
 /*----------------------------------------------------------------------------
 	HTTP Request utils.
@@ -59,6 +134,11 @@ UXC_HTTPDownload::UXC_HTTPDownload()
 
 void UXC_HTTPDownload::Destroy()
 {
+	if ( CURL_Library )
+	{
+		delete CURL_Library;
+		CURL_Library = nullptr;
+	}
 	Socket.Close();
 	Super::Destroy();
 }
@@ -104,25 +184,136 @@ void UXC_HTTPDownload::ReceiveFile( UNetConnection* InConnection, INT InPackageI
 	DownloadURL.ProxyPort = ProxyServerPort;
 	CurrentURL = DownloadURL;
 
-	Request = HTTP_Request();
-	Request.Hostname = CurrentURL.StringHost();
-	Request.Method = TEXT("GET");
-	Request.Path = CurrentURL.StringGet();
-	Request.Headers.Set( TEXT("User-Agent")  , TEXT("Unreal"));
-	Request.Headers.Set( TEXT("Accept")      , TEXT("*/*"));
-	Request.Headers.Set( TEXT("Connection")  , TEXT("close")); //Proxy with auth require [Proxy-Connection: close]
-	Request.RedirectsLeft = 5;
-
+	if ( DownloadURL.Scheme == TEXT("http") )
+	{
+		Request = HTTP_Request();
+		Request.Hostname = CurrentURL.StringHost();
+		Request.Method = TEXT("GET");
+		Request.Path = CurrentURL.StringGet();
+		Request.Headers.Set( TEXT("User-Agent")  , TEXT("Unreal"));
+		Request.Headers.Set( TEXT("Accept")      , TEXT("*/*"));
+		Request.Headers.Set( TEXT("Connection")  , TEXT("close")); //Proxy with auth require [Proxy-Connection: close]
+		Request.RedirectsLeft = 5;
+	}
+	else if ( DownloadURL.Scheme == TEXT("https") )
+	{
+		CURL_Library = new CScopedLibrary( "libcurl" CACUSLIB_LIBRARY_EXTENSION);
+		if ( !CURL_Library->Handle )
+		{
+			IsInvalid = 1;
+			Finished = 1;
+			return;
+		}
+	}
+	else
+	{
+		IsInvalid = 1;
+		Finished = 1;
+		return;
+	}
 	FString Msg1 = FString::Printf( (Info.PackageFlags&PKG_ClientOptional)?LocalizeProgress(TEXT("ReceiveOptionalFile"),TEXT("Engine")):LocalizeProgress(TEXT("ReceiveFile"),TEXT("Engine")), Info.Parent->GetName() );
 	Connection->Driver->Notify->NotifyProgress( *Msg1, TEXT(""), 4.f );
 
 	unguard;
 }
 
+
+
+
 void UXC_HTTPDownload::Tick()
 {
 	SavedLogs.Flush();
 	Super::Tick();
+
+	/* HTTPS */
+	if ( !Finished && !AsyncAction && (CurrentURL.Scheme == TEXT("https")) && CURL_Library && CURL_Library->Handle )
+	{
+		Request.Hostname = CurrentURL.String();
+		debugf( NAME_DevNet, TEXT("Requesting %s..."), *Request.Hostname);
+
+		//***********
+		// Setup CURL
+		new FDownloadAsyncProcessor( [](FDownloadAsyncProcessor* Proc)
+		{
+			//STAGE 1, setup local environment.
+			FString Error;
+			UXC_HTTPDownload* Download = (UXC_HTTPDownload*)Proc->Download;
+
+			if ( LibCurl_GetProcs(Download->CURL_Library) )
+			{
+				//STAGE 2, let main go (no longer safe to use Download from now on)
+				Proc->Detach();
+				int32 GlobalInitCode = curl_global_init(0b11);
+				if ( !GlobalInitCode )
+				{
+					CURLEasy = curl_easy_init();
+					if ( CURLEasy )
+					{
+						TChar8Buffer<1024> RequestURL = *Download->Request.Hostname;
+						curl_easy_setopt( CURLEasy, 10000 +  2 /*URL*/, *RequestURL);
+						curl_easy_setopt( CURLEasy, 00000 + 64 /*SSL_VERIFYPEER*/, 0);
+						curl_easy_setopt( CURLEasy, 00000 + 81 /*SSL_VERIFYHOST*/, 0);
+						curl_easy_setopt( CURLEasy, 00000 + 13,/*TIMEOUT*/ appCeil(Download->DownloadTimeout));
+						curl_easy_setopt( CURLEasy, 00000 + 45,/*FAILONERROR*/ 1); 
+						curl_easy_setopt( CURLEasy, 00000 + 41,/*VERBOSE*/ 1);
+						curl_easy_setopt( CURLEasy, 20000 + 11,/*WRITEFUNCTION*/ TestCallback);
+						curl_easy_setopt( CURLEasy, 20000 + 79,/*HEADERFUNCTION*/ HeaderCallback);
+
+						{
+							//STAGE 3, validate downloader and lock
+							CSpinLock SL(&UXC_Download::GlobalLock);
+							if ( Proc->DownloadActive() )
+							{
+								CallbackDownload = Download;
+								ContentLengthQuery = 1;
+								int32 DownloadResult = curl_easy_perform(CURLEasy);
+//								Download->SavedLogs.Logf( *FString::Printf(TEXT("LibCurl status %i (%s)"), DownloadResult, appFromAnsi(curl_easy_strerror(DownloadResult))) );
+								if ( DownloadResult )
+								{
+									// Timed out, this redirect is unreachable
+									if ( DownloadResult == 28 ) 
+									{
+										Download->IsInvalid = 1;
+										Error = UXC_Download::ConnectionFailedError;
+									}
+									// If LZMA fails, try UZ, then no compression.
+									else if ( Download->CurrentURL.Compression > 0 )
+										Download->CurrentURL.Compression--;
+									// All methods failed, this redirect doesn't have this file.
+									else
+										Error = FString::Printf( *UXC_Download::InvalidUrlError, *Download->CurrentURL.String());
+								}
+
+								if ( Download->RecvFileAr )
+								{
+									delete Download->RecvFileAr;
+									Download->RecvFileAr = nullptr;
+								}
+
+								CallbackDownload = nullptr;
+							}
+						}
+						curl_easy_cleanup(CURLEasy);
+						CURLEasy = nullptr;
+					}
+					else Error = TEXT("CURL easy init error");
+				}
+				else
+				{
+					TCharWideBuffer<256> Reason = curl_easy_strerror(GlobalInitCode); // Convert to UNICODE
+					Error = FString::Printf( TEXT("CURL error: %s"), *Reason);
+				}
+			}
+			else Error = TEXT("Unable to retrieve libcurl entry points.");
+
+		if ( Proc->DownloadActive() && Error.Len() )
+			Download->DownloadError(*Error);
+
+		}, this);
+
+		return;
+	}
+
 
 	//*****************************
 	// Async operations have 3 stages:

@@ -18,10 +18,11 @@
 #include "Engine.h"
 #include "UnNet.h"
 
+#include "Cacus/CacusBase.h"
 #include "Cacus/CacusThread.h"
-#include "Cacus/CacusPlatform.h"
 #include "Cacus/IPv6.h"
 #include "Cacus/NetworkSocket.h"
+#include "Cacus/DynamicLinking.h"
 
 #include "XC_Template.h"
 
